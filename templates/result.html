@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Export Lyrics Pro</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="hero-card">
+        <p class="eyebrow">Xử lý hoàn tất</p>
+        <h1>{{ song_title }}</h1>
+        <p class="hero-copy">
+          File export đã sẵn sàng. Bạn có thể tải ngay <code>{{ output_filename }}</code>.
+        </p>
+      </section>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <section class="notice-stack">
+            {% for category, message in messages %}
+              <div class="notice notice-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          </section>
+        {% endif %}
+      {% endwith %}
+
+      <section class="panel result-panel">
+        <div class="stats-grid">
+          <article class="stat-card">
+            <span class="stat-label">Model</span>
+            <strong>{{ model_name }}</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Số dòng</span>
+            <strong>{{ total_lines }}</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Số từ</span>
+            <strong>{{ total_words }}</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Kích thước</span>
+            <strong>{{ output_size_kb }} KB</strong>
+          </article>
+        </div>
+
+        <div class="export-row">
+          <a class="primary-button" href="{{ url_for('download', job_id=job_id, filename=output_filename) }}">
+            Export file JSON
+          </a>
+          <a class="secondary-link" href="{{ url_for('index') }}">Xử lý file khác</a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

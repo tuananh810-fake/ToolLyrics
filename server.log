@@ -1,0 +1,6 @@
+
+> toollyric-local-ui@1.0.0 start
+> node server.js
+
+ToolLyric Node server listening at http://127.0.0.1:5000
+Python worker ready on cuda with recommended model medium

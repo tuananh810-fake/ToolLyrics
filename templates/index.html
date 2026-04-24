@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ToolLyric Uploader</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="hero-card">
+        <p class="eyebrow">ToolLyric</p>
+        <h1>Tải MP3 và LRC để tạo file lời bài hát đã căn timestamp</h1>
+        <p class="hero-copy">
+          Chọn file nguồn, nhấn xử lý, rồi export trực tiếp <code>lyrics_pro.json</code> sau khi align xong.
+        </p>
+      </section>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <section class="notice-stack">
+            {% for category, message in messages %}
+              <div class="notice notice-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          </section>
+        {% endif %}
+      {% endwith %}
+
+      <section class="panel">
+        <form class="upload-form" action="{{ url_for('process') }}" method="post" enctype="multipart/form-data">
+          <div class="field-grid">
+            <label class="file-drop">
+              <span class="field-label">File MP3</span>
+              <input type="file" name="audio" accept=".mp3,audio/mpeg" required>
+              <span class="field-help">Chấp nhận file <code>.mp3</code></span>
+            </label>
+
+            <label class="file-drop">
+              <span class="field-label">File LRC</span>
+              <input type="file" name="lrc" accept=".lrc,text/plain" required>
+              <span class="field-help">Chấp nhận file <code>.lrc</code></span>
+            </label>
+          </div>
+
+          <div class="config-grid">
+            <label class="field">
+              <span class="field-label">Tên bài hát</span>
+              <input type="text" name="song" placeholder="Tùy chọn, sẽ lấy từ file nếu có">
+            </label>
+
+            <label class="field">
+              <span class="field-label">Ngôn ngữ</span>
+              <input type="text" name="language" value="vi" placeholder="vi, en...">
+            </label>
+
+            <label class="field">
+              <span class="field-label">Model</span>
+              <select name="model">
+                <option value="large-v3">large-v3</option>
+                <option value="medium">medium</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="action-row">
+            <button class="primary-button" type="submit">Xác nhận upload và xử lý</button>
+            <p class="action-hint">Lần chạy đầu có thể chậm vì model cần khởi tạo.</p>
+          </div>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ToolLyric Local Server</title>
+    <link rel="stylesheet" href="/static/app.css?v=20260424-utf8">
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="hero-card">
+        <p class="eyebrow">ToolLyric Local</p>
+        <h1>Upload MP3 va LRC roi export `lyrics_pro.json`</h1>
+        <p class="hero-copy">
+          Local Node server giu worker Python song lau de tai su dung model. Mac dinh se uu tien cach canh nhanh hon khi file LRC da co timestamp.
+        </p>
+        <p id="runtimeHint" class="hero-copy runtime-copy">Dang kiem tra runtime...</p>
+      </section>
+
+      <section id="noticeStack" class="notice-stack" hidden></section>
+
+      <section class="panel">
+        <form id="uploadForm" class="upload-form" autocomplete="off">
+          <div class="field-grid">
+            <label class="file-drop">
+              <span class="field-label">File MP3</span>
+              <input type="file" name="audio" accept=".mp3,audio/mpeg" required>
+              <span class="field-help">Chap nhan file <code>.mp3</code></span>
+            </label>
+
+            <label class="file-drop">
+              <span class="field-label">File LRC</span>
+              <input type="file" name="lrc" accept=".lrc,text/plain" required>
+              <span class="field-help">Chap nhan file <code>.lrc</code></span>
+            </label>
+          </div>
+
+          <div class="config-grid">
+            <label class="field">
+              <span class="field-label">Ten bai hat</span>
+              <input type="text" name="song" placeholder="Tuy chon, se lay tu file neu co">
+            </label>
+
+            <label class="field">
+              <span class="field-label">Ngon ngu</span>
+              <input type="text" name="language" value="vi" placeholder="vi, en...">
+            </label>
+
+            <label class="field">
+              <span class="field-label">Model</span>
+              <select name="model">
+                <option value="recommended" selected>recommended / medium</option>
+                <option value="medium">medium - fast, good quality</option>
+                <option value="large-v3">large-v3 - highest quality, slower</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field-label">Thiet bi</span>
+              <select name="device">
+                <option value="auto" selected>auto - uu tien RTX 4060 neu co</option>
+                <option value="cuda">cuda - NVIDIA GPU</option>
+                <option value="cpu">cpu</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="option-grid">
+            <label class="option-card">
+              <input type="checkbox" name="qualityFallback">
+              <span>
+                <strong>Auto fallback</strong>
+                <small>Cham hon, chi dung khi LRC lech nhieu hoac direct align yeu.</small>
+              </span>
+            </label>
+
+            <label class="option-card">
+              <input type="checkbox" name="refineTimestamps">
+              <span>
+                <strong>Refine timestamp</strong>
+                <small>Tang do min nhung rat nang tren CPU.</small>
+              </span>
+            </label>
+
+            <label class="option-card">
+              <input type="checkbox" name="useVad">
+              <span>
+                <strong>VAD silence</strong>
+                <small>Canh silence ky hon, doi lai se cham hon.</small>
+              </span>
+            </label>
+
+            <label class="option-card">
+              <input type="checkbox" name="debugOutput">
+              <span>
+                <strong>Debug JSON</strong>
+                <small>Ghi file debug de soi loi, mac dinh tat de nhanh.</small>
+              </span>
+            </label>
+          </div>
+
+          <div class="action-row">
+            <button id="submitButton" class="primary-button" type="submit">Confirm upload and process</button>
+            <p id="actionHint" class="action-hint">Mac dinh: RTX GPU neu co, model medium, direct align, skip refine, no VAD, no debug.</p>
+          </div>
+        </form>
+      </section>
+
+      <section id="progressPanel" class="panel progress-panel" hidden>
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Job Progress</p>
+            <h2 id="progressTitle">No active job</h2>
+          </div>
+          <div class="job-chip-row">
+            <span id="jobStatusChip" class="job-chip">idle</span>
+            <span id="jobQueueChip" class="job-chip">queue: -</span>
+          </div>
+        </div>
+
+        <div class="progress-shell" aria-hidden="true">
+          <div id="progressBar" class="progress-bar"></div>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card">
+            <span class="stat-label">Job ID</span>
+            <strong id="jobId">-</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Stage</span>
+            <strong id="jobStage">-</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Progress</span>
+            <strong id="jobPercent">0%</strong>
+          </article>
+        </div>
+
+        <div class="field progress-copy-card">
+          <span class="field-label">Current step</span>
+          <p id="jobMessage" class="progress-copy">No active job yet.</p>
+        </div>
+
+        <div class="field history-card">
+          <span class="field-label">Recent steps</span>
+          <ol id="historyList" class="history-list"></ol>
+        </div>
+      </section>
+
+      <section id="exportPanel" class="panel result-panel" hidden>
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Export</p>
+            <h2 id="exportTitle">Export is not ready yet</h2>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card">
+            <span class="stat-label">Song</span>
+            <strong id="songTitle">-</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Model</span>
+            <strong id="modelName">-</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Device</span>
+            <strong id="deviceName">-</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Lines</span>
+            <strong id="totalLines">0</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Words</span>
+            <strong id="totalWords">0</strong>
+          </article>
+          <article class="stat-card">
+            <span class="stat-label">Size</span>
+            <strong id="outputSize">0 KB</strong>
+          </article>
+        </div>
+
+        <div class="export-row">
+          <a id="downloadLink" class="primary-button" href="#" download aria-disabled="true">Export JSON</a>
+          <button id="resetButton" class="secondary-link" type="button">Reset view</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js?v=20260424-utf8"></script>
+  </body>
+</html>

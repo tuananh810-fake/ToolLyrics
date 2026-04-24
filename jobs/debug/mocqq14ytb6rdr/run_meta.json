@@ -1,0 +1,8 @@
+{
+  "requestedModel": "medium",
+  "resolvedModel": "medium",
+  "requestedDevice": "cuda",
+  "resolvedDevice": "cuda",
+  "strategyRequested": "auto",
+  "strategyUsed": "direct"
+}

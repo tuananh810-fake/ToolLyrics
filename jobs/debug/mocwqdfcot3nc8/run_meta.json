@@ -1,0 +1,8 @@
+{
+  "requestedModel": "large-v3",
+  "resolvedModel": "large-v3",
+  "requestedDevice": "cuda",
+  "resolvedDevice": "cuda",
+  "strategyRequested": "auto",
+  "strategyUsed": "direct"
+}

@@ -1,0 +1,76 @@
+[python-worker] Adjustment:   0%|          | 0/314.98 [00:00<?, ?sec/s]
+[python-worker] Adjustment: 100%|██████████| 314.98/314.98 [00:00<00:00, 21859.49sec/s]
+[python-worker] Refine:   0%|          | 0/322.51 [00:00<?, ?sec/s]
+[python-worker] Refine:   9%|▊         | 27.58/322.51 [00:04<00:48,  6.08sec/s]
+[python-worker] Refine:  13%|█▎        | 42.54/322.51 [00:07<00:53,  5.22sec/s]
+[python-worker] Refine:  18%|█▊        | 57.39/322.51 [00:10<00:51,  5.17sec/s]
+[python-worker] Refine:  19%|█▉        | 61.04/322.51 [00:13<01:08,  3.84sec/s]
+[python-worker] Refine:  28%|██▊       | 90.46/322.51 [00:17<00:41,  5.65sec/s]
+[python-worker] Refine:  33%|███▎      | 105.9/322.51 [00:20<00:41,  5.27sec/s]
+[python-worker] Refine:  37%|███▋      | 120.44/322.51 [00:23<00:40,  4.93sec/s]
+[python-worker] Refine:  42%|████▏     | 135.38/322.51 [00:27<00:39,  4.76sec/s]
+[python-worker] Refine:  46%|████▌     | 148.8/322.51 [00:30<00:38,  4.50sec/s]
+[python-worker] Refine:  49%|████▉     | 157.48/322.51 [00:33<00:41,  3.95sec/s]
+[python-worker] Refine:  58%|█████▊    | 188.42/322.51 [00:37<00:24,  5.53sec/s]
+[python-worker] Refine:  63%|██████▎   | 203.72/322.51 [00:40<00:22,  5.21sec/s]
+[python-worker] Refine:  68%|██████▊   | 218.6/322.51 [00:44<00:21,  4.94sec/s]
+[python-worker] Refine:  69%|██████▉   | 222.3/322.51 [00:47<00:26,  3.82sec/s]
+[python-worker] Refine:  78%|███████▊  | 251.44/322.51 [00:50<00:13,  5.26sec/s]
+[python-worker] Refine:  83%|████████▎ | 267.15/322.51 [00:54<00:10,  5.06sec/s]
+[python-worker] Refine:  87%|████████▋ | 281.58/322.51 [00:57<00:08,  4.80sec/s]
+[python-worker] Refine:  92%|█████████▏| 296.64/322.51 [01:01<00:05,  4.67sec/s]
+[python-worker] Refine:  96%|█████████▌| 309.95/322.51 [01:04<00:02,  4.43sec/s]
+[python-worker] Refine:  99%|█████████▉| 318.73/322.51 [01:07<00:00,  3.92sec/s]
+[python-worker] Refine: 100%|██████████| 322.51/322.51 [01:07<00:00,  4.75sec/s]
+Failed to parse worker message: Saved: D:\ToolLyric\jobs\debug\mocrs80zvluppr\stable_aligned_segments.json SyntaxError: Unexpected token 'S', "Saved: D:\"... is not valid JSON
+    at JSON.parse (<anonymous>)
+    at Socket.<anonymous> (D:\ToolLyric\server.js:228:34)
+    at Socket.emit (node:events:508:28)
+    at addChunk (node:internal/streams/readable:563:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+    at Readable.push (node:internal/streams/readable:394:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+[python-worker] Adjustment:   0%|          | 0/240.19 [00:00<?, ?sec/s]
+[python-worker] Adjustment: 100%|██████████| 240.19/240.19 [00:00<00:00, 11429.23sec/s]
+[python-worker] Refine:   0%|          | 0/247.3 [00:00<?, ?sec/s]
+[python-worker] Refine:  13%|█▎        | 31.51/247.3 [00:03<00:21, 10.17sec/s]
+[python-worker] Refine:  19%|█▉        | 46.37/247.3 [00:06<00:28,  7.10sec/s]
+[python-worker] Refine:  25%|██▍       | 61.18/247.3 [00:09<00:30,  6.17sec/s]
+[python-worker] Refine:  31%|███       | 75.72/247.3 [00:12<00:30,  5.61sec/s]
+[python-worker] Refine:  37%|███▋      | 90.72/247.3 [00:15<00:29,  5.36sec/s]
+[python-worker] Refine:  43%|████▎     | 105.47/247.3 [00:18<00:27,  5.19sec/s]
+[python-worker] Refine:  48%|████▊     | 119.35/247.3 [00:21<00:25,  4.99sec/s]
+[python-worker] Refine:  49%|████▊     | 120.1/247.3 [00:24<00:37,  3.41sec/s]
+[python-worker] Refine:  63%|██████▎   | 155.01/247.3 [00:27<00:15,  5.89sec/s]
+[python-worker] Refine:  69%|██████▊   | 169.87/247.3 [00:30<00:13,  5.57sec/s]
+[python-worker] Refine:  75%|███████▍  | 184.83/247.3 [00:33<00:11,  5.41sec/s]
+[python-worker] Refine:  81%|████████  | 199.36/247.3 [00:36<00:09,  5.20sec/s]
+[python-worker] Refine:  87%|████████▋ | 214.3/247.3 [00:39<00:06,  5.10sec/s]
+[python-worker] Refine:  93%|█████████▎| 229.11/247.3 [00:42<00:03,  5.02sec/s]
+[python-worker] Refine:  98%|█████████▊| 242.99/247.3 [00:45<00:00,  4.88sec/s]
+[python-worker] Refine:  99%|█████████▊| 243.68/247.3 [00:49<00:01,  3.42sec/s]
+[python-worker] Refine: 100%|██████████| 247.3/247.3 [00:49<00:00,  5.04sec/s]
+Failed to parse worker message: Saved: D:\ToolLyric\jobs\debug\moctwbhsggtzh5\stable_aligned_segments.json SyntaxError: Unexpected token 'S', "Saved: D:\"... is not valid JSON
+    at JSON.parse (<anonymous>)
+    at Socket.<anonymous> (D:\ToolLyric\server.js:228:34)
+    at Socket.emit (node:events:508:28)
+    at addChunk (node:internal/streams/readable:563:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+    at Readable.push (node:internal/streams/readable:394:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+[python-worker] Adjustment:   0%|          | 0/239.15 [00:00<?, ?sec/s]
+[python-worker] Adjustment: 100%|██████████| 239.15/239.15 [00:00<00:00, 10214.23sec/s]
+[python-worker] Refine:   0%|          | 0/247.3 [00:00<?, ?sec/s]
+[python-worker] Refine:  13%|█▎        | 31.43/247.3 [02:12<15:11,  4.22s/sec]
+[python-worker] Refine:  19%|█▉        | 46.42/247.3 [04:28<20:39,  6.17s/sec]
+[python-worker] Refine:  25%|██▍       | 61.4/247.3 [06:16<20:18,  6.55s/sec]
+[python-worker] Refine:  31%|███       | 76.31/247.3 [08:28<20:57,  7.35s/sec]
+[python-worker] Refine:  37%|███▋      | 91.25/247.3 [10:39<20:18,  7.81s/sec]
+[python-worker] Refine:  43%|████▎     | 106.18/247.3 [12:54<19:19,  8.22s/sec]
+[python-worker] Refine:  48%|████▊     | 119.58/247.3 [15:28<19:29,  9.16s/sec]
+[python-worker] forrtl: error (200): program aborting due to window-CLOSE event
+Image              PC                Routine            Line        Source             
+KERNELBASE.dll     00007FFBBE249DED  Unknown               Unknown  Unknown
+KERNEL32.DLL       00007FFBC01AE8D7  Unknown               Unknown  Unknown
+ntdll.dll          00007FFBC17AC48C  Unknown               Unknown  Unknown
+^C^C

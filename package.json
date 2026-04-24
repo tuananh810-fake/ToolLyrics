@@ -1,0 +1,14 @@
+{
+  "name": "toollyric-local-ui",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local Node.js UI for ToolLyric high-precision word alignment",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "multer": "^2.0.2"
+  }
+}
