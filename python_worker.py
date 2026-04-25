@@ -11,16 +11,23 @@ for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8", errors="replace")
 
 from high_precision_word_aligner import (
+    extract_words_from_result,
     get_alignment_model,
     get_runtime_profile,
     resolve_device_choice,
     resolve_model_choice,
     run_alignment,
+    safe_refine_result,
+    semiglobal_align,
+    tokenize_lyrics,
+    transcribe_audio,
 )
 
 
 MIN_EXPORT_WORD_DURATION_MS = 80
 MAX_REASONABLE_WORD_DURATION_MS = 2200
+DEFAULT_TXT_WORD_DURATION_MS = 360
+MIN_TXT_MATCH_SIMILARITY = 0.72
 
 
 def send_message(payload: dict[str, Any]) -> None:
@@ -82,14 +89,7 @@ def _smooth_line_word_timings(
     line_end_limit_ms: int,
     min_duration_ms: int = MIN_EXPORT_WORD_DURATION_MS,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Repair only unsafe word spans while preserving model anchors.
-
-    The previous export guard made every word renderable, but it could flatten a
-    whole line when just a few stable-ts spans were too short. This version is
-    more conservative: keep valid model timings, redistribute only consecutive
-    bad spans, then do a final monotonic repair pass. Full-line redistribution
-    is used only when almost every token in the line is unusable.
-    """
+    """Repair only unsafe word spans while preserving model anchors."""
     stats = {
         "adjustedWords": 0,
         "redistributedClusters": 0,
@@ -107,9 +107,6 @@ def _smooth_line_word_timings(
             start_ms = max(line_start_ms, start_ms)
         normalized.append({**word, "s": start_ms, "e": max(start_ms, end_ms)})
 
-    # Remove overlaps without destroying gaps. Gaps are useful silence/vocal
-    # boundaries, so only push a word forward when it starts before the previous
-    # word has ended.
     cursor = line_start_ms
     for word in normalized:
         original_start = word["s"]
@@ -126,8 +123,6 @@ def _smooth_line_word_timings(
         if word["e"] - word["s"] < min_duration_ms
     ]
 
-    # If the whole line is unreliable, distribute the line evenly once. This is
-    # a last resort for empty/poor word-level timestamps, not the normal path.
     if len(bad_indices) >= max(2, int(len(normalized) * 0.75)):
         first_start = max(line_start_ms, normalized[0]["s"])
         last_end = max(line_end_limit_ms, normalized[-1]["e"], first_start + len(normalized) * min_duration_ms)
@@ -176,10 +171,8 @@ def _smooth_line_word_timings(
             stats["quality"] = "smoothed"
         index += 1
 
-    # Final monotonic repair. If a cluster expanded into the next model anchor,
-    # push only the downstream overlap forward; do not flatten the full line.
     cursor = line_start_ms
-    for index, word in enumerate(normalized):
+    for word in normalized:
         original_start = word["s"]
         original_end = word["e"]
         word["s"] = max(word["s"], cursor)
@@ -251,6 +244,188 @@ def postprocess_lyrics_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _read_plain_lyric_lines(path: str) -> list[str]:
+    text = Path(path).read_text(encoding="utf-8-sig")
+    lines = []
+    for raw_line in text.splitlines():
+        line = " ".join(raw_line.strip().split())
+        if line:
+            lines.append(line)
+    if not lines:
+        raise ValueError("TXT lyric file is empty. Add one lyric line per row.")
+    return lines
+
+
+def _fill_plain_text_line_timings(
+    tokens: list[str],
+    token_timings: list[tuple[int | None, int | None]],
+    cursor_ms: int,
+) -> list[dict[str, int | str]]:
+    anchors = [index for index, (start, end) in enumerate(token_timings) if start is not None and end is not None]
+    if not anchors:
+        words = []
+        for index, token in enumerate(tokens):
+            start_ms = cursor_ms + index * DEFAULT_TXT_WORD_DURATION_MS
+            words.append({"w": token, "s": start_ms, "e": start_ms + DEFAULT_TXT_WORD_DURATION_MS})
+        return words
+
+    starts = [start for start, _ in token_timings]
+    ends = [end for _, end in token_timings]
+    first_anchor = anchors[0]
+    last_anchor = anchors[-1]
+
+    if first_anchor > 0:
+        right = int(starts[first_anchor] or cursor_ms)
+        left = max(cursor_ms, right - first_anchor * DEFAULT_TXT_WORD_DURATION_MS)
+        step = (right - left) / first_anchor
+        for index in range(first_anchor):
+            starts[index] = int(round(left + step * index))
+            ends[index] = int(round(left + step * (index + 1)))
+
+    for left_anchor, right_anchor in zip(anchors, anchors[1:]):
+        gap_count = right_anchor - left_anchor - 1
+        if gap_count <= 0:
+            continue
+        left = int(ends[left_anchor] or starts[left_anchor] or cursor_ms)
+        right = int(starts[right_anchor] or left)
+        if right <= left:
+            right = left + gap_count * DEFAULT_TXT_WORD_DURATION_MS
+        step = (right - left) / gap_count
+        for offset, index in enumerate(range(left_anchor + 1, right_anchor)):
+            starts[index] = int(round(left + step * offset))
+            ends[index] = int(round(left + step * (offset + 1)))
+
+    if last_anchor < len(tokens) - 1:
+        left = int(ends[last_anchor] or starts[last_anchor] or cursor_ms)
+        for offset, index in enumerate(range(last_anchor + 1, len(tokens)), start=0):
+            starts[index] = left + offset * DEFAULT_TXT_WORD_DURATION_MS
+            ends[index] = left + (offset + 1) * DEFAULT_TXT_WORD_DURATION_MS
+
+    words = []
+    running_cursor = max(cursor_ms, int(starts[0] or cursor_ms))
+    for token, start_ms, end_ms in zip(tokens, starts, ends, strict=True):
+        start_ms = max(running_cursor, int(start_ms if start_ms is not None else running_cursor))
+        end_ms = max(start_ms + MIN_EXPORT_WORD_DURATION_MS, int(end_ms if end_ms is not None else start_ms + DEFAULT_TXT_WORD_DURATION_MS))
+        words.append({"w": token, "s": start_ms, "e": end_ms})
+        running_cursor = end_ms
+    return words
+
+
+def run_plain_text_alignment(
+    payload: dict[str, Any],
+    *,
+    resolved_model: str,
+    resolved_device: str,
+    progress_callback,
+) -> dict[str, Any]:
+    lyric_lines = _read_plain_lyric_lines(payload["lrcPath"])
+    all_reference_tokens: list[str] = []
+    token_ranges: list[tuple[int, int, str]] = []
+    for line in lyric_lines:
+        start_index = len(all_reference_tokens)
+        tokens = tokenize_lyrics(line)
+        all_reference_tokens.extend(tokens)
+        token_ranges.append((start_index, len(all_reference_tokens), line))
+
+    if not all_reference_tokens:
+        raise ValueError("TXT lyric file has no usable lyric words.")
+
+    progress_callback("transcribing", "Transcribing MP3 for plain TXT lyric alignment...", 12, {"mode": "plain_text"})
+    model = get_alignment_model(resolved_model, resolved_device)
+
+    def stable_progress(done_s: float, total_s: float) -> None:
+        if total_s <= 0:
+            return
+        percent = 12 + int(min(1.0, max(0.0, done_s / total_s)) * 45)
+        progress_callback("transcribing", "Detecting vocal word timings from audio...", percent, {"mode": "plain_text"})
+
+    result = transcribe_audio(
+        model,
+        payload["audioPath"],
+        payload.get("language"),
+        float(payload.get("minWordDur", 0.02)),
+        use_vad=bool(payload.get("useVad", True)),
+        progress_callback=stable_progress,
+    )
+
+    if not bool(payload.get("skipRefine", False)):
+        progress_callback("refining", "Refining detected word timings...", 62, {"mode": "plain_text"})
+        result = safe_refine_result(
+            model,
+            payload["audioPath"],
+            result,
+            float(payload.get("refinePrecision", 0.02)),
+            stage_label="plain text transcription",
+        )
+
+    detected_words = extract_words_from_result(result)
+    if not detected_words:
+        raise ValueError("No word-level timestamps were detected from the audio.")
+
+    progress_callback("aligning_text", "Aligning TXT lyrics to detected audio words...", 74, {"mode": "plain_text"})
+    hypothesis_tokens = [word.text for word in detected_words]
+    _, alignment = semiglobal_align(all_reference_tokens, hypothesis_tokens)
+
+    token_to_detected_index: dict[int, int] = {}
+    matched_tokens = 0
+    for ref_index, hyp_index, similarity in alignment:
+        if ref_index is None or hyp_index is None:
+            continue
+        if similarity < MIN_TXT_MATCH_SIMILARITY:
+            continue
+        token_to_detected_index[ref_index] = hyp_index
+        matched_tokens += 1
+
+    data: list[dict[str, Any]] = []
+    cursor_ms = max(0, int(round(detected_words[0].start_s * 1000)))
+    for start_index, end_index, line in token_ranges:
+        tokens = all_reference_tokens[start_index:end_index]
+        timings: list[tuple[int | None, int | None]] = []
+        matched_in_line = 0
+        for absolute_index in range(start_index, end_index):
+            detected_index = token_to_detected_index.get(absolute_index)
+            if detected_index is None:
+                timings.append((None, None))
+                continue
+            detected_word = detected_words[detected_index]
+            timings.append((
+                int(round(detected_word.start_s * 1000)),
+                int(round(detected_word.end_s * 1000)),
+            ))
+            matched_in_line += 1
+
+        words = _fill_plain_text_line_timings(tokens, timings, cursor_ms)
+        if words:
+            cursor_ms = words[-1]["e"] + 120
+        data.append(
+            {
+                "line": line,
+                "startTimeMs": words[0]["s"] if words else cursor_ms,
+                "words": words,
+                "plainTextMatch": {
+                    "matchedWords": matched_in_line,
+                    "totalWords": len(tokens),
+                    "matchRatio": round(matched_in_line / len(tokens), 3) if tokens else 1.0,
+                },
+            }
+        )
+
+    payload_out: dict[str, Any] = {
+        "song": payload.get("song") or Path(payload["audioPath"]).stem,
+        "inputMode": "plain_text",
+        "plainTextSummary": {
+            "lyricLines": len(lyric_lines),
+            "lyricWords": len(all_reference_tokens),
+            "detectedWords": len(detected_words),
+            "matchedWords": matched_tokens,
+            "matchRatio": round(matched_tokens / len(all_reference_tokens), 3),
+        },
+        "data": data,
+    }
+    progress_callback("postprocess", "Repairing export timings...", 90, {"mode": "plain_text"})
+    return postprocess_lyrics_payload(payload_out)
+
+
 def write_processed_payload(output_path: str, payload: dict[str, Any]) -> None:
     Path(output_path).write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
@@ -304,26 +479,35 @@ def handle_align(message_id: str, payload: dict[str, Any]) -> None:
             }
         )
 
-    result_payload = run_alignment(
-        payload["audioPath"],
-        payload["lrcPath"],
-        payload["outputPath"],
-        song=payload.get("song"),
-        model_name=resolved_model,
-        device=resolved_device,
-        language=payload.get("language"),
-        window_pad_ms=int(payload.get("windowPadMs", 300)),
-        segment_pad_ms=int(payload.get("segmentPadMs", 180)),
-        tail_pad_ms=int(payload.get("tailPadMs", 4000)),
-        min_word_dur=float(payload.get("minWordDur", 0.02)),
-        refine_precision=float(payload.get("refinePrecision", 0.02)),
-        skip_refine=bool(payload.get("skipRefine", False)),
-        strategy=str(payload.get("strategy", "auto")),
-        use_vad=bool(payload.get("useVad", True)),
-        debug_dir=payload.get("debugDir"),
-        progress_callback=progress_callback,
-    )
-    result_payload = postprocess_lyrics_payload(result_payload)
+    if str(payload.get("lyricsMode", "lrc")) == "plain_text":
+        result_payload = run_plain_text_alignment(
+            payload,
+            resolved_model=resolved_model,
+            resolved_device=resolved_device,
+            progress_callback=progress_callback,
+        )
+    else:
+        result_payload = run_alignment(
+            payload["audioPath"],
+            payload["lrcPath"],
+            payload["outputPath"],
+            song=payload.get("song"),
+            model_name=resolved_model,
+            device=resolved_device,
+            language=payload.get("language"),
+            window_pad_ms=int(payload.get("windowPadMs", 300)),
+            segment_pad_ms=int(payload.get("segmentPadMs", 180)),
+            tail_pad_ms=int(payload.get("tailPadMs", 4000)),
+            min_word_dur=float(payload.get("minWordDur", 0.02)),
+            refine_precision=float(payload.get("refinePrecision", 0.02)),
+            skip_refine=bool(payload.get("skipRefine", False)),
+            strategy=str(payload.get("strategy", "auto")),
+            use_vad=bool(payload.get("useVad", True)),
+            debug_dir=payload.get("debugDir"),
+            progress_callback=progress_callback,
+        )
+        result_payload = postprocess_lyrics_payload(result_payload)
+
     write_processed_payload(payload["outputPath"], result_payload)
 
     send_message(
