@@ -43,6 +43,20 @@ function sanitizeFilename(filename) {
   return path.basename(filename).replace(/[^\w.\-]+/g, "_");
 }
 
+function makeOutputFilename(songTitle) {
+  const baseName = String(songTitle || "song")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_+/g, "_")
+    .toLowerCase();
+
+  return `${baseName || "song"}_lyrics_pro.json`;
+}
+
 function hasAllowedExtension(filename, extensions) {
   return extensions.includes(path.extname(filename || "").toLowerCase());
 }
@@ -313,6 +327,7 @@ function createJobRecord({
   audioPath,
   lrcPath,
   outputPath,
+  outputFilename,
   debugPath,
   songTitle,
   requestedModel,
@@ -340,7 +355,7 @@ function createJobRecord({
     skipRefine,
     useVad,
     debugEnabled,
-    outputFilename: "lyrics_pro.json",
+    outputFilename: outputFilename || "lyrics_pro.json",
     outputSizeKb: 0,
     downloadUrl: null,
     totalLines: 0,
@@ -518,7 +533,9 @@ app.post(
       const jobId = req.jobId;
       const jobOutputDir = path.join(outputsDir, jobId);
       const jobDebugDir = path.join(debugDir, jobId);
-      const outputPath = path.join(jobOutputDir, "lyrics_pro.json");
+      const songTitle = song || path.parse(audioFile.originalname).name;
+      const outputFilename = makeOutputFilename(songTitle);
+      const outputPath = path.join(jobOutputDir, outputFilename);
       await fsp.mkdir(jobOutputDir, { recursive: true });
       if (debugEnabled) {
         await fsp.mkdir(jobDebugDir, { recursive: true });
@@ -529,8 +546,9 @@ app.post(
         audioPath: audioFile.path,
         lrcPath: lrcFile.path,
         outputPath,
+        outputFilename,
         debugPath: jobDebugDir,
-        songTitle: song || path.parse(audioFile.originalname).name,
+        songTitle,
         requestedModel: model,
         requestedDevice: device,
         language,
