@@ -20,6 +20,7 @@ from high_precision_word_aligner import (
 
 
 MIN_EXPORT_WORD_DURATION_MS = 80
+MAX_REASONABLE_WORD_DURATION_MS = 2200
 
 
 def send_message(payload: dict[str, Any]) -> None:
@@ -44,22 +45,59 @@ def _next_line_start_ms(lines: list[dict[str, Any]], index: int, fallback_ms: in
     return fallback_ms
 
 
+def _redistribute_range(
+    words: list[dict[str, Any]],
+    start_index: int,
+    end_index: int,
+    left_bound_ms: int,
+    right_bound_ms: int,
+    *,
+    min_duration_ms: int,
+) -> None:
+    count = end_index - start_index + 1
+    if count <= 0:
+        return
+
+    right_bound_ms = max(right_bound_ms, left_bound_ms + count * min_duration_ms)
+    total_duration = right_bound_ms - left_bound_ms
+    step = total_duration / count
+    cursor = left_bound_ms
+
+    for offset, word_index in enumerate(range(start_index, end_index + 1)):
+        start_ms = int(round(cursor))
+        if offset == count - 1:
+            end_ms = right_bound_ms
+        else:
+            end_ms = int(round(left_bound_ms + step * (offset + 1)))
+        end_ms = max(start_ms + min_duration_ms, end_ms)
+        words[word_index]["s"] = start_ms
+        words[word_index]["e"] = end_ms
+        cursor = end_ms
+
+
 def _smooth_line_word_timings(
     words: list[dict[str, Any]],
     *,
     line_start_ms: int,
     line_end_limit_ms: int,
     min_duration_ms: int = MIN_EXPORT_WORD_DURATION_MS,
-) -> list[dict[str, Any]]:
-    """Make exported karaoke timings renderable without changing token text.
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Repair only unsafe word spans while preserving model anchors.
 
-    stable-ts can occasionally return zero-length or near-zero word spans. The
-    JSON still looks precise, but a word-by-word renderer cannot highlight a
-    0ms token. This pass keeps timings monotonic, preserves strong anchors as
-    much as possible, and redistributes only the spans that are too short.
+    The previous export guard made every word renderable, but it could flatten a
+    whole line when just a few stable-ts spans were too short. This version is
+    more conservative: keep valid model timings, redistribute only consecutive
+    bad spans, then do a final monotonic repair pass. Full-line redistribution
+    is used only when almost every token in the line is unusable.
     """
+    stats = {
+        "adjustedWords": 0,
+        "redistributedClusters": 0,
+        "fullLineRedistributed": False,
+        "quality": "model",
+    }
     if not words:
-        return []
+        return [], stats
 
     normalized: list[dict[str, Any]] = []
     for index, word in enumerate(words):
@@ -69,43 +107,92 @@ def _smooth_line_word_timings(
             start_ms = max(line_start_ms, start_ms)
         normalized.append({**word, "s": start_ms, "e": max(start_ms, end_ms)})
 
+    # Remove overlaps without destroying gaps. Gaps are useful silence/vocal
+    # boundaries, so only push a word forward when it starts before the previous
+    # word has ended.
+    cursor = line_start_ms
+    for word in normalized:
+        original_start = word["s"]
+        original_end = word["e"]
+        word["s"] = max(word["s"], cursor)
+        word["e"] = max(word["s"], word["e"])
+        if word["s"] != original_start or word["e"] != original_end:
+            stats["adjustedWords"] += 1
+        cursor = word["e"]
+
+    bad_indices = [
+        index
+        for index, word in enumerate(normalized)
+        if word["e"] - word["s"] < min_duration_ms
+    ]
+
+    # If the whole line is unreliable, distribute the line evenly once. This is
+    # a last resort for empty/poor word-level timestamps, not the normal path.
+    if len(bad_indices) >= max(2, int(len(normalized) * 0.75)):
+        first_start = max(line_start_ms, normalized[0]["s"])
+        last_end = max(line_end_limit_ms, normalized[-1]["e"], first_start + len(normalized) * min_duration_ms)
+        _redistribute_range(
+            normalized,
+            0,
+            len(normalized) - 1,
+            first_start,
+            last_end,
+            min_duration_ms=min_duration_ms,
+        )
+        stats["adjustedWords"] += len(normalized)
+        stats["redistributedClusters"] += 1
+        stats["fullLineRedistributed"] = True
+        stats["quality"] = "estimated"
+        return normalized, stats
+
+    index = 0
+    while index < len(normalized):
+        duration_ms = normalized[index]["e"] - normalized[index]["s"]
+        if duration_ms >= min_duration_ms:
+            index += 1
+            continue
+
+        cluster_start = index
+        while index + 1 < len(normalized) and normalized[index + 1]["e"] - normalized[index + 1]["s"] < min_duration_ms:
+            index += 1
+        cluster_end = index
+
+        left_bound = normalized[cluster_start - 1]["e"] if cluster_start > 0 else line_start_ms
+        right_bound = normalized[cluster_end + 1]["s"] if cluster_end + 1 < len(normalized) else line_end_limit_ms
+        if right_bound <= left_bound:
+            right_bound = left_bound + (cluster_end - cluster_start + 1) * min_duration_ms
+
+        _redistribute_range(
+            normalized,
+            cluster_start,
+            cluster_end,
+            left_bound,
+            right_bound,
+            min_duration_ms=min_duration_ms,
+        )
+        stats["adjustedWords"] += cluster_end - cluster_start + 1
+        stats["redistributedClusters"] += 1
+        if stats["quality"] == "model":
+            stats["quality"] = "smoothed"
+        index += 1
+
+    # Final monotonic repair. If a cluster expanded into the next model anchor,
+    # push only the downstream overlap forward; do not flatten the full line.
+    cursor = line_start_ms
     for index, word in enumerate(normalized):
-        previous_end = normalized[index - 1]["e"] if index else line_start_ms
-        start_ms = max(_coerce_ms(word.get("s"), previous_end), previous_end)
+        original_start = word["s"]
+        original_end = word["e"]
+        word["s"] = max(word["s"], cursor)
+        word["e"] = max(word["s"] + min_duration_ms, word["e"])
+        if word["e"] - word["s"] > MAX_REASONABLE_WORD_DURATION_MS:
+            word["e"] = word["s"] + MAX_REASONABLE_WORD_DURATION_MS
+        if word["s"] != original_start or word["e"] != original_end:
+            stats["adjustedWords"] += 1
+            if stats["quality"] == "model":
+                stats["quality"] = "smoothed"
+        cursor = word["e"]
 
-        if index + 1 < len(normalized):
-            next_start = _coerce_ms(normalized[index + 1].get("s"), start_ms + min_duration_ms)
-        else:
-            next_start = max(line_end_limit_ms, start_ms + min_duration_ms)
-
-        desired_end = max(_coerce_ms(word.get("e"), start_ms), start_ms + min_duration_ms)
-        hard_limit = max(start_ms, next_start)
-        if desired_end > hard_limit:
-            desired_end = hard_limit
-
-        word["s"] = start_ms
-        word["e"] = max(start_ms, desired_end)
-
-    # Second pass: if crowded anchors still produced tiny spans, distribute the
-    # whole line evenly inside the available line window. This is preferable to
-    # exporting 0ms words because it keeps the renderer stable and readable.
-    if any(_coerce_ms(word.get("e")) - _coerce_ms(word.get("s")) < min_duration_ms for word in normalized):
-        first_start = max(line_start_ms, _coerce_ms(normalized[0].get("s"), line_start_ms))
-        last_end = max(line_end_limit_ms, _coerce_ms(normalized[-1].get("e"), first_start))
-        total_available = max(last_end - first_start, len(normalized) * min_duration_ms)
-        step = total_available / len(normalized)
-        cursor = first_start
-        for index, word in enumerate(normalized):
-            start_ms = int(round(cursor))
-            if index == len(normalized) - 1:
-                end_ms = max(start_ms + min_duration_ms, int(round(first_start + total_available)))
-            else:
-                end_ms = max(start_ms + min_duration_ms, int(round(first_start + step * (index + 1))))
-            word["s"] = start_ms
-            word["e"] = end_ms
-            cursor = end_ms
-
-    return normalized
+    return normalized, stats
 
 
 def postprocess_lyrics_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -113,11 +200,16 @@ def postprocess_lyrics_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(lines, list):
         return payload
 
+    total_adjusted_words = 0
+    total_smoothed_lines = 0
+    total_estimated_lines = 0
+
     for index, line in enumerate(lines):
         if not isinstance(line, dict):
             continue
         words = line.get("words")
         if not isinstance(words, list) or not words:
+            line["timingQuality"] = "empty"
             continue
 
         line_start_ms = _coerce_ms(line.get("startTimeMs"), _coerce_ms(words[0].get("s"), 0))
@@ -129,15 +221,33 @@ def postprocess_lyrics_payload(payload: dict[str, Any]) -> dict[str, Any]:
         if line_end_limit_ms <= line_start_ms:
             line_end_limit_ms = fallback_end_ms
 
-        smoothed_words = _smooth_line_word_timings(
+        smoothed_words, stats = _smooth_line_word_timings(
             words,
             line_start_ms=line_start_ms,
             line_end_limit_ms=line_end_limit_ms,
         )
         line["words"] = smoothed_words
+        line["timingQuality"] = stats["quality"]
+        line["timingFix"] = {
+            "adjustedWords": stats["adjustedWords"],
+            "redistributedClusters": stats["redistributedClusters"],
+            "fullLineRedistributed": stats["fullLineRedistributed"],
+            "minWordDurationMs": MIN_EXPORT_WORD_DURATION_MS,
+        }
+        total_adjusted_words += int(stats["adjustedWords"])
+        if stats["quality"] == "smoothed":
+            total_smoothed_lines += 1
+        if stats["quality"] == "estimated":
+            total_estimated_lines += 1
         if smoothed_words:
             line["startTimeMs"] = smoothed_words[0]["s"]
 
+    payload["timingSummary"] = {
+        "minWordDurationMs": MIN_EXPORT_WORD_DURATION_MS,
+        "adjustedWords": total_adjusted_words,
+        "smoothedLines": total_smoothed_lines,
+        "estimatedLines": total_estimated_lines,
+    }
     return payload
 
 
