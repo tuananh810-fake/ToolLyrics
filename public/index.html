@@ -10,9 +10,9 @@
     <main class="page-shell">
       <section class="hero-card">
         <p class="eyebrow">ToolLyric Local</p>
-        <h1>Upload MP3 va LRC roi export `lyrics_pro.json`</h1>
+        <h1>Upload MP3 va LRC/TXT roi export `lyrics_pro.json`</h1>
         <p class="hero-copy">
-          Local Node server giu worker Python song lau de tai su dung model. Mac dinh se uu tien cach canh nhanh hon khi file LRC da co timestamp.
+          Upload file LRC da co timestamp de canh nhanh, hoac TXT chi co loi bai hat de ToolLyric tu transcribe audio va canh timing.
         </p>
         <p id="runtimeHint" class="hero-copy runtime-copy">Dang kiem tra runtime...</p>
       </section>
@@ -29,9 +29,9 @@
             </label>
 
             <label class="file-drop">
-              <span class="field-label">File LRC</span>
-              <input type="file" name="lrc" accept=".lrc,text/plain" required>
-              <span class="field-help">Chap nhan file <code>.lrc</code></span>
+              <span class="field-label">File lyric LRC hoac TXT</span>
+              <input type="file" name="lrc" accept=".lrc,.txt,text/plain" required>
+              <span class="field-help"><code>.lrc</code> co timestamp hoac <code>.txt</code> chi co loi bai hat, moi dong mot cau.</span>
             </label>
           </div>
 
@@ -70,7 +70,7 @@
               <input type="checkbox" name="qualityFallback">
               <span>
                 <strong>Auto fallback</strong>
-                <small>Cham hon, chi dung khi LRC lech nhieu hoac direct align yeu.</small>
+                <small>Cham hon, chi dung khi LRC lech nhieu hoac direct align yeu. TXT luon dung transcribe.</small>
               </span>
             </label>
 
@@ -86,7 +86,7 @@
               <input type="checkbox" name="useVad">
               <span>
                 <strong>VAD silence</strong>
-                <small>Canh silence ky hon, doi lai se cham hon.</small>
+                <small>Canh silence ky hon, doi lai se cham hon. TXT se tu bat VAD.</small>
               </span>
             </label>
 
@@ -101,7 +101,7 @@
 
           <div class="action-row">
             <button id="submitButton" class="primary-button" type="submit">Confirm upload and process</button>
-            <p id="actionHint" class="action-hint">Mac dinh: RTX GPU neu co, model medium, direct align, skip refine, no VAD, no debug.</p>
+            <p id="actionHint" class="action-hint">LRC: direct align nhanh. TXT: transcribe audio roi canh lyric tu dong, se cham hon.</p>
           </div>
         </form>
       </section>
@@ -190,6 +190,6 @@
       </section>
     </main>
 
-    <script src="/app.js?v=20260424-utf8"></script>
+    <script src="/app.js?v=20260424-txt-mode"></script>
   </body>
 </html>
