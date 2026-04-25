@@ -57,6 +57,14 @@ function makeOutputFilename(songTitle) {
   return `${baseName || "song"}_lyrics_pro.json`;
 }
 
+function getLyricsMode(filename) {
+  const extension = path.extname(filename || "").toLowerCase();
+  if (extension === ".txt") {
+    return "plain_text";
+  }
+  return "lrc";
+}
+
 function hasAllowedExtension(filename, extensions) {
   return extensions.includes(path.extname(filename || "").toLowerCase());
 }
@@ -160,6 +168,7 @@ function serializeJob(job) {
     resolvedModel: job.resolvedModel,
     requestedDevice: job.requestedDevice,
     deviceName: job.deviceName,
+    lyricsMode: job.lyricsMode,
     strategy: job.strategy,
     skipRefine: job.skipRefine,
     useVad: job.useVad,
@@ -332,6 +341,7 @@ function createJobRecord({
   songTitle,
   requestedModel,
   requestedDevice,
+  lyricsMode,
   language,
   strategy,
   skipRefine,
@@ -350,6 +360,7 @@ function createJobRecord({
     requestedDevice,
     resolvedModel: null,
     deviceName: null,
+    lyricsMode,
     language,
     strategy,
     skipRefine,
@@ -402,6 +413,7 @@ async function processNextJob() {
         language: job.language || undefined,
         model: job.requestedModel,
         device: job.requestedDevice,
+        lyricsMode: job.lyricsMode,
         strategy: job.strategy,
         skipRefine: job.skipRefine,
         useVad: job.useVad,
@@ -431,7 +443,8 @@ async function processNextJob() {
     job.downloadUrl = `/download/${job.jobId}/${job.outputFilename}`;
     pushJobHistory(job, "completed", "Alignment completed. Export is ready.", 100, {
       totalLines: job.totalLines,
-      totalWords: job.totalWords
+      totalWords: job.totalWords,
+      lyricsMode: job.lyricsMode
     });
   } catch (error) {
     job.status = "failed";
@@ -506,22 +519,23 @@ app.post(
       const language = (body.language || "").trim();
       const model = (body.model || "recommended").trim();
       const device = (body.device || "auto").trim();
-      const strategy = body.qualityFallback === "on" ? "auto" : "direct";
+      const lyricsMode = lrcFile ? getLyricsMode(lrcFile.originalname) : "lrc";
+      const strategy = lyricsMode === "plain_text" ? "transcribe" : (body.qualityFallback === "on" ? "auto" : "direct");
       const skipRefine = body.refineTimestamps === "on" ? false : true;
-      const useVad = body.useVad === "on";
+      const useVad = lyricsMode === "plain_text" ? true : body.useVad === "on";
       const debugEnabled = body.debugOutput === "on";
 
       if (!audioFile) {
         return res.status(400).json({ error: "Please choose an MP3 file." });
       }
       if (!lrcFile) {
-        return res.status(400).json({ error: "Please choose an LRC file." });
+        return res.status(400).json({ error: "Please choose an LRC or TXT lyric file." });
       }
       if (!hasAllowedExtension(audioFile.originalname, [".mp3"])) {
         return res.status(400).json({ error: "Audio file must be .mp3." });
       }
-      if (!hasAllowedExtension(lrcFile.originalname, [".lrc"])) {
-        return res.status(400).json({ error: "Lyric file must be .lrc." });
+      if (!hasAllowedExtension(lrcFile.originalname, [".lrc", ".txt"])) {
+        return res.status(400).json({ error: "Lyric file must be .lrc or .txt." });
       }
       if (!["recommended", "large-v3", "medium"].includes(model)) {
         return res.status(400).json({ error: "Invalid model." });
@@ -551,6 +565,7 @@ app.post(
         songTitle,
         requestedModel: model,
         requestedDevice: device,
+        lyricsMode,
         language,
         strategy,
         skipRefine,
